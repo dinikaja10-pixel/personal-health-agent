@@ -1,4 +1,5 @@
 import os
+import httpx
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -6,7 +7,7 @@ from fastapi import FastAPI
 import secrets
 from urllib.parse import urlencode
 
-from fastapi.responses import RedirectResponsegit
+from fastapi.responses import RedirectResponse
 
 load_dotenv()
 
@@ -15,6 +16,8 @@ app = FastAPI()
 WHOOP_CLIENT_ID = os.getenv("WHOOP_CLIENT_ID")
 WHOOP_CLIENT_SECRET = os.getenv("WHOOP_CLIENT_SECRET")
 WHOOP_REDIRECT_URI = os.getenv("WHOOP_REDIRECT_URI")
+
+ACCESS_TOKEN = None
 
 
 @app.get("/")
@@ -39,4 +42,41 @@ def login():
     )
 
     return RedirectResponse(authorization_url)
+
+@app.get("/callback")
+def callback(code: str):
+    global ACCESS_TOKEN
+
+    token_url = "https://api.prod.whoop.com/oauth/oauth2/token"
+
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": WHOOP_CLIENT_ID,
+        "client_secret": WHOOP_CLIENT_SECRET,
+        "redirect_uri": WHOOP_REDIRECT_URI,
+    }
+
+    response = httpx.post(token_url, data=data)
+    token_data = response.json()
+
+    ACCESS_TOKEN = token_data.get("access_token")
+
+    return {"message": "WHOOP erfolgreich verbunden"}
+
+@app.get("/whoop/profile")
+def whoop_profile():
+    if not ACCESS_TOKEN:
+        return {"error": "Noch nicht mit WHOOP verbunden"}
+
+    headers = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}"
+    }
+
+    response = httpx.get(
+        "https://api.prod.whoop.com/developer/v2/user/profile/basic",
+        headers=headers
+    )
+
+    return response.json()
 
